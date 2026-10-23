@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { 
   LayoutGrid, Send, BookOpen, Users, BarChart2, 
-  Settings, HelpCircle, Bell, Search, ChevronDown, Shield 
+  Settings, HelpCircle, Bell, ChevronDown, Shield, MoreHorizontal, LogOut, User
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 const Logo = () => (
   <div className="flex items-center gap-2 px-2">
@@ -20,19 +26,24 @@ const Logo = () => (
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isDashboard = pathname === "/dashboard";
   const isUsuarios = pathname.includes("/dashboard/usuarios");
+  const isPlantillas = pathname.includes("/dashboard/plantillas");
 
   const [adminUser, setAdminUser] = useState<any>(null);
+  const [isChecking, setIsChecking] = useState(true);
 
-  // Consultamos el endpoint /auth/me usando el token guardado
   useEffect(() => {
     const fetchPerfil = async () => {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      
+      if (!token) {
+        router.push("/login");
+        return;
+      }
 
       try {
-        // *Nota: Si la ruta que creó Russell es distinta a /auth/me, cámbiala aquí
         const response = await fetch("http://localhost:3000/auth/me", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -42,20 +53,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (response.ok) {
           const data = await response.json();
           setAdminUser(data);
-          // Guardamos también el empresaId globalmente para que otras páginas lo usen facilito
           if (data.empresaId) {
             localStorage.setItem("empresaId", data.empresaId.toString());
           }
+          setIsChecking(false);
+        } else {
+          localStorage.removeItem("token");
+          router.push("/login");
         }
       } catch (error) {
         console.error("Error al obtener perfil del admin:", error);
+        localStorage.removeItem("token");
+        router.push("/login");
       }
     };
 
     fetchPerfil();
-  }, []);
+  }, [router]);
 
-  const nombreAdmin = adminUser?.nombre || "Administrador";
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("empresaId");
+    localStorage.removeItem("phishWardenUser");
+    router.push("/login");
+  };
+
+  const nombreAdmin = adminUser?.nombre || adminUser?.name || "Administrador";
   const inicialesAdmin = getInitials(nombreAdmin);
   const nombreEmpresa = adminUser?.empresa?.nombre || "Mi Organización";
   const inicialesEmpresa = nombreEmpresa.substring(0, 2).toUpperCase();
@@ -66,10 +89,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return name.substring(0, 2).toUpperCase();
   }
 
+  if (isChecking) {
+    return <div className="flex h-screen w-full items-center justify-center bg-slate-50"></div>;
+  }
+
   return (
-    <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
-      
-      {/* Sidebar Lateral */}
+    <div className="flex h-screen w-full bg-slate-50 overflow-hidden relative">
       <aside className="w-[260px] flex-shrink-0 bg-[#283F50] flex flex-col justify-between overflow-y-auto">
         <div>
           <div className="h-20 flex items-center px-6">
@@ -118,47 +143,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <ChevronDown className="h-4 w-4 -rotate-90 opacity-50" />
             </Link>
 
-            <Link href="#" className="flex items-center justify-between px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
-              <div className="flex items-center gap-3">
-                <BookOpen className="h-5 w-5" />
-                <span className="text-sm font-medium">Biblioteca de plantillas</span>
-              </div>
-              <ChevronDown className="h-4 w-4 -rotate-90 opacity-50" />
+            <Link 
+              href="/dashboard/plantillas" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isPlantillas 
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <BookOpen className="h-5 w-5" />
+              <span className="text-sm font-medium">Biblioteca de plantillas</span>
             </Link>
 
-            <div className="flex flex-col">
-              <Link 
-                href="/dashboard/usuarios" 
-                className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
-                  isUsuarios 
-                    ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
-                    : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Users className="h-5 w-5" />
-                  <span className="text-sm font-medium">Gestión de usuarios</span>
-                </div>
-                <ChevronDown className={`h-4 w-4 transition-transform ${isUsuarios ? "rotate-0 opacity-100" : "-rotate-90 opacity-50"}`} />
-              </Link>
-              
-              {isUsuarios && (
-                <div className="mt-1 ml-6 pl-4 border-l border-white/10 space-y-1">
-                  <Link href="/dashboard/usuarios" className="flex items-center gap-3 px-4 py-2 rounded-lg text-white font-medium transition-colors">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#E5A93C]"></div>
-                    <span className="text-sm">Directorio</span>
-                  </Link>
-                  <Link href="#" className="flex items-center gap-3 px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <div className="w-1.5 h-1.5 rounded-full bg-transparent"></div>
-                    <span className="text-sm">Departamentos</span>
-                  </Link>
-                  <Link href="#" className="flex items-center gap-3 px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <div className="w-1.5 h-1.5 rounded-full bg-transparent"></div>
-                    <span className="text-sm">Carga masiva</span>
-                  </Link>
-                </div>
-              )}
-            </div>
+            <Link 
+              href="/dashboard/usuarios" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isUsuarios 
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-sm font-medium">Gestión de usuarios</span>
+            </Link>
 
             <Link href="#" className="flex items-center gap-3 px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
               <BarChart2 className="h-5 w-5" />
@@ -179,46 +186,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </nav>
           
-          <div className="flex items-center justify-between px-4 py-3 hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
-                {inicialesAdmin}
+          <DropdownMenu>
+            <DropdownMenuTrigger className="w-full focus:outline-none outline-none">
+              <div className="flex items-center justify-between px-4 py-3 hover:bg-white/5 rounded-lg cursor-pointer transition-colors text-left">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
+                    {inicialesAdmin}
+                  </div>
+                  <div>
+                    <p className="text-sm text-white font-medium leading-none truncate max-w-[120px]">
+                      {nombreAdmin}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">Administrador</p>
+                  </div>
+                </div>
+                <MoreHorizontal className="h-5 w-5 text-slate-400 hover:text-white transition-colors" />
               </div>
-              <div>
-                <p className="text-sm text-white font-medium leading-none truncate max-w-[120px]">
-                  {nombreAdmin}
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">Administrador</p>
-              </div>
-            </div>
-            <div className="flex gap-1">
-              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-            </div>
-          </div>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent 
+              className="w-56 bg-[#283F50] border-white/10 text-slate-200 shadow-xl mb-2" 
+              align="start" 
+              side="top"
+            >
+              <DropdownMenuItem 
+                onClick={() => router.push("/dashboard/perfil")}
+                className="hover:bg-white/10 focus:bg-white/10 focus:text-white cursor-pointer py-2.5"
+              >
+                <User className="mr-2 h-4 w-4" />
+                <span className="font-medium">Ver perfil</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem 
+                onClick={handleLogout}
+                className="hover:bg-red-500/10 focus:bg-red-500/20 focus:text-red-400 text-red-400 cursor-pointer py-2.5"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span className="font-medium">Cerrar sesión</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
         </div>
       </aside>
 
-      {/* Contenido Principal */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center text-sm">
             <span className="text-slate-400">PhishWarden</span>
             <span className="mx-2 text-slate-300">/</span>
             <span className="font-semibold text-[#283F50]">
-              {isUsuarios ? "Usuarios" : "Vista general"}
+              {pathname === "/dashboard/perfil" ? "Mi perfil" : isUsuarios ? "Usuarios" : isPlantillas ? "Plantillas" : "Vista general"}
             </span>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Buscar..." 
-                className="pl-9 bg-slate-50 border-slate-200 h-9 rounded-md focus-visible:ring-[#E5A93C]"
-              />
-            </div>
             <button className="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
               <Bell className="h-4 w-4" />
             </button>
