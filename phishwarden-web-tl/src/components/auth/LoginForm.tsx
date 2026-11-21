@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { apiClient, ApiError } from "@/lib/api-client";
+import type { AuthLoginResponse } from "@/lib/types";
 
 export function LoginForm() {
   const router = useRouter();
@@ -25,37 +27,30 @@ export function LoginForm() {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:3000/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const data = await apiClient.post<AuthLoginResponse>(
+        "/auth/login",
+        { email, password },
+        { skipAuth: true }
+      );
 
-      if (!response.ok) {
-        throw new Error("Credenciales inválidas o error en el servidor");
+      const token = data.access_token || data.token;
+      if (token) {
+        localStorage.setItem("token", token);
       }
 
-      const data = await response.json();
-      console.log("¡Conexión exitosa al backend!", data);
-      
-      // Guardamos el token JWT (ajusta si la propiedad se llama distinto, ej: data.access_token)
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-      } else if (data.access_token) {
-        localStorage.setItem("token", data.access_token);
-      }
-      
       router.push("/dashboard");
-
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message);
+      if (err instanceof ApiError) {
+        setError(err.message || "Credenciales inválidas o error en el servidor");
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Ocurrió un error inesperado al iniciar sesión");
+      }
     } finally {
       setIsLoading(false);
     }
-
   };
   return (
     <form className="space-y-5" onSubmit={handleSubmit}>

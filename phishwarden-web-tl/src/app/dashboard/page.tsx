@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Shield, Users, Send, Zap, MoreHorizontal, ChevronDown } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import type { AdminProfile } from "@/lib/types";
 
 export default function DashboardHomePage() {
   const [primerNombre, setPrimerNombre] = useState("Cargando...");
@@ -12,20 +14,12 @@ export default function DashboardHomePage() {
       if (!token) return;
 
       try {
-        const response = await fetch("http://localhost:3000/auth/me", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const fullName = data.nombre || data.name || "Administrador";
-          // Extraemos solo el primer nombre
-          const firstName = fullName.split(" ")[0];
-          setPrimerNombre(firstName);
-        } else {
-          setPrimerNombre("Administrador");
-        }
-      } catch (error) {
+        const data = await apiClient.get<AdminProfile>("/auth/me");
+        const fullName = data.nombre || data.name || "Administrador";
+        // Extraemos solo el primer nombre
+        const firstName = fullName.split(" ")[0];
+        setPrimerNombre(firstName);
+      } catch {
         setPrimerNombre("Administrador");
       }
     };

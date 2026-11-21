@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
-  LayoutGrid, Send, BookOpen, Users, BarChart2, 
+  LayoutGrid, Send, BookOpen, Globe, Users, BarChart2, 
   Settings, HelpCircle, Bell, ChevronDown, Shield, MoreHorizontal, LogOut, User
 } from "lucide-react";
 import {
@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { apiClient } from "@/lib/api-client";
+import type { AdminProfile } from "@/lib/types";
 
 const Logo = () => (
   <div className="flex items-center gap-2 px-2">
@@ -28,10 +30,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const isDashboard = pathname === "/dashboard";
+  const isCampanas = pathname.includes("/dashboard/campanas");
   const isUsuarios = pathname.includes("/dashboard/usuarios");
   const isPlantillas = pathname.includes("/dashboard/plantillas");
+  const isPortales = pathname.includes("/dashboard/portales");
 
-  const [adminUser, setAdminUser] = useState<any>(null);
+  const [adminUser, setAdminUser] = useState<AdminProfile | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -44,26 +48,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
 
       try {
-        const response = await fetch("http://localhost:3000/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setAdminUser(data);
-          if (data.empresaId) {
-            localStorage.setItem("empresaId", data.empresaId.toString());
-          }
-          setIsChecking(false);
-        } else {
-          localStorage.removeItem("token");
-          router.push("/login");
+        const data = await apiClient.get<AdminProfile>("/auth/me");
+        setAdminUser(data);
+        
+        const resolvedEmpresaId = data.empresaId ?? data.empresa?.id;
+        if (resolvedEmpresaId !== undefined && resolvedEmpresaId !== null) {
+          localStorage.setItem("empresaId", String(resolvedEmpresaId));
         }
+        setIsChecking(false);
       } catch (error) {
         console.error("Error al obtener perfil del admin:", error);
         localStorage.removeItem("token");
+        localStorage.removeItem("empresaId");
         router.push("/login");
       }
     };
@@ -135,12 +131,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="text-sm font-medium">Vista general</span>
             </Link>
             
-            <Link href="#" className="flex items-center justify-between px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
-              <div className="flex items-center gap-3">
-                <Send className="h-5 w-5" />
-                <span className="text-sm font-medium">Gestión de campañas</span>
-              </div>
-              <ChevronDown className="h-4 w-4 -rotate-90 opacity-50" />
+            <Link 
+              href="/dashboard/campanas" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isCampanas 
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Send className="h-5 w-5" />
+              <span className="text-sm font-medium">Gestión de campañas</span>
             </Link>
 
             <Link 
@@ -153,6 +153,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <BookOpen className="h-5 w-5" />
               <span className="text-sm font-medium">Biblioteca de plantillas</span>
+            </Link>
+
+            <Link 
+              href="/dashboard/portales" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isPortales 
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Globe className="h-5 w-5" />
+              <span className="text-sm font-medium">Portales simulados</span>
             </Link>
 
             <Link 
@@ -236,7 +248,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="text-slate-400">PhishWarden</span>
             <span className="mx-2 text-slate-300">/</span>
             <span className="font-semibold text-[#283F50]">
-              {pathname === "/dashboard/perfil" ? "Mi perfil" : isUsuarios ? "Usuarios" : isPlantillas ? "Plantillas" : "Vista general"}
+              {pathname === "/dashboard/perfil"
+                ? "Mi perfil"
+                : isCampanas
+                ? "Campañas"
+                : isPortales
+                ? "Portales Simulados"
+                : isPlantillas
+                ? "Plantillas"
+                : isUsuarios
+                ? "Usuarios"
+                : "Vista general"}
             </span>
           </div>
 

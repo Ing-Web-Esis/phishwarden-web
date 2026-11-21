@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, AlertCircle, X, Save, User, Mail, Building2, Lock, Edit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { apiClient, ApiError } from "@/lib/api-client";
+import type { AdminProfile, UpdateAdminProfileInput } from "@/lib/types";
 
 export default function PerfilPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -48,23 +50,17 @@ export default function PerfilPage() {
       if (!token) return;
 
       try {
-        const response = await fetch("http://localhost:3000/auth/me", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const fetchedData = {
-            nombre: data.nombre || data.name || "",
-            correo: data.correo || data.email || "",
-            nombreEmpresa: data.empresa?.nombre || data.empresa?.name || "",
-            contraseñaActual: "",
-            nuevaContraseña: ""
-          };
-          setFormData(fetchedData);
-          setOriginalData(fetchedData);
-        }
-      } catch (error) {
+        const data = await apiClient.get<AdminProfile>("/auth/me");
+        const fetchedData = {
+          nombre: data.nombre || data.name || "",
+          correo: data.correo || data.email || "",
+          nombreEmpresa: data.empresa?.nombre || "",
+          contraseñaActual: "",
+          nuevaContraseña: ""
+        };
+        setFormData(fetchedData);
+        setOriginalData(fetchedData);
+      } catch {
         showToast("Error", "No se pudo cargar la información del perfil.", "error");
       } finally {
         setIsLoading(false);
@@ -90,44 +86,50 @@ export default function PerfilPage() {
       return;
     }
 
-    const payload: any = {
-      nombre: formData.nombre,
-      correo: formData.correo,
-      nombreEmpresa: formData.nombreEmpresa,
+    const hasCurrentPass = Boolean(formData.contraseñaActual?.trim());
+    const hasNewPass = Boolean(formData.nuevaContraseña?.trim());
+
+    if ((hasCurrentPass && !hasNewPass) || (!hasCurrentPass && hasNewPass)) {
+      showToast(
+        "Contraseña incompleta",
+        "Para cambiar la contraseña debes ingresar tanto la contraseña actual como la nueva.",
+        "error"
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    const payload: UpdateAdminProfileInput = {
+      nombre: formData.nombre?.trim(),
+      correo: formData.correo?.trim(),
+      nombreEmpresa: formData.nombreEmpresa?.trim(),
     };
 
-    if (formData.contraseñaActual || formData.nuevaContraseña) {
+    if (hasCurrentPass && hasNewPass) {
       payload.contraseñaActual = formData.contraseñaActual;
       payload.nuevaContraseña = formData.nuevaContraseña;
     }
 
     try {
-      const response = await fetch("http://localhost:3000/auth/me", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
+      await apiClient.put("/auth/me", payload);
 
-      if (response.ok) {
-        showToast("Perfil actualizado", "Tus datos han sido guardados correctamente.", "success");
-        
-        // Actualizamos la copia de seguridad y limpiamos contraseñas
-        const updatedData = { ...formData, contraseñaActual: "", nuevaContraseña: "" };
-        setFormData(updatedData);
-        setOriginalData(updatedData);
-        setIsEditing(false); // Salimos del modo edición tras guardar con éxito
-        
-        // Recargar la página después de un momento para que el Layout actualice el nombre
-        setTimeout(() => window.location.reload(), 1500);
+      showToast("Perfil actualizado", "Tus datos han sido guardados correctamente.", "success");
+      
+      // Actualizamos la copia de seguridad y limpiamos contraseñas de memoria
+      const updatedData = { ...formData, contraseñaActual: "", nuevaContraseña: "" };
+      setFormData(updatedData);
+      setOriginalData(updatedData);
+      setIsEditing(false); // Salimos del modo edición tras guardar con éxito
+      
+      // Recargar la página después de un momento para que el Layout actualice el nombre
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        showToast("Error al actualizar", err.message || "Revisa los datos ingresados.", "error");
       } else {
-        const err = await response.json().catch(() => ({}));
-        showToast("Error al actualizar", err.message || "Revisa tu contraseña actual.", "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
+      // Nota: Si ocurre un 400 u otro error, se preservan los campos editados en formData
     } finally {
       setIsSubmitting(false);
     }

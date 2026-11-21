@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Search, Plus, BookOpen, MoreHorizontal, ChevronLeft, ChevronRight, Loader2, Monitor, Smartphone, X, CheckCircle2, AlertCircle, Eye, Edit, Trash2, User, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Plus, MoreHorizontal, ChevronLeft, ChevronRight, Loader2, Monitor, Smartphone, X, CheckCircle2, AlertCircle, Eye, Edit, Trash2, User, ChevronDown, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,9 +11,21 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { apiClient, ApiError } from "@/lib/api-client";
+import type {
+  PlantillaItem,
+  CreatePlantillaInput,
+  UpdatePlantillaInput,
+  PaginatedResponse,
+  AttackType,
+  DifficultyLevel,
+  LandingTipo,
+  PortalSimuladoItem,
+} from "@/lib/types";
 
 export default function PlantillasPage() {
-  const [plantillas, setPlantillas] = useState<any[]>([]);
+  const [plantillas, setPlantillas] = useState<PlantillaItem[]>([]);
+  const [portalesDisponibles, setPortalesDisponibles] = useState<PortalSimuladoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalRegistros, setTotalRegistros] = useState(0);
 
@@ -23,24 +35,38 @@ export default function PlantillasPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
-  const [selectedPlantilla, setSelectedPlantilla] = useState<any>(null);
+  const [selectedPlantilla, setSelectedPlantilla] = useState<PlantillaItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreatePlantillaInput>({
     title: "",
     subject: "",
     bodyHtml: "",
     attackType: "PHISHING",
-    difficulty: "MEDIO"
+    difficulty: "MEDIO",
+    landingTipo: "generico",
+    landingId: null,
   });
 
-  const [editFormData, setEditFormData] = useState({
+  const [editFormData, setEditFormData] = useState<{
+    id: number | string;
+    title: string;
+    subject: string;
+    bodyHtml: string;
+    attackType: AttackType;
+    difficulty: DifficultyLevel;
+    landingTipo: LandingTipo;
+    landingId?: number | null;
+  }>({
     id: "",
     title: "",
     subject: "",
     bodyHtml: "",
     attackType: "PHISHING",
-    difficulty: "MEDIO"
+    difficulty: "MEDIO",
+    landingTipo: "generico",
+    landingId: null,
   });
 
   const [toast, setToast] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
@@ -74,75 +100,112 @@ export default function PlantillasPage() {
     setToast({ visible: true, title, message, type });
   };
 
-  const fetchPlantillas = async () => {
-    setIsLoading(true);
-    try {
-      const empresaId = localStorage.getItem("empresaId");
-      const token = localStorage.getItem("token");
-      if (!empresaId || !token) return;
+  useEffect(() => {
+    const loadPlantillas = async () => {
+      try {
+        const empresaId = localStorage.getItem("empresaId");
+        if (!empresaId) return;
 
-      const url = new URL(`http://localhost:3000/empresas/${empresaId}/plantillas`);
-      url.searchParams.append("page", page.toString());
-      url.searchParams.append("limit", limit.toString());
-      
-      if (debouncedSearch) url.searchParams.append("search", debouncedSearch);
-      if (attackTypeFiltro) url.searchParams.append("attackType", attackTypeFiltro);
-      if (difficultyFiltro) url.searchParams.append("difficulty", difficultyFiltro);
+        const params: Record<string, string | number> = {
+          page,
+          limit,
+        };
 
-      const response = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        if (debouncedSearch) params.search = debouncedSearch;
+        if (attackTypeFiltro) params.attackType = attackTypeFiltro;
+        if (difficultyFiltro) params.difficulty = difficultyFiltro;
 
-      if (response.ok) {
-        const data = await response.json();
-        setPlantillas(data.data || []);
-        setTotalRegistros(data.total || data.data?.length || 0);
+        const data = await apiClient.get<PaginatedResponse<PlantillaItem>>(
+          `/empresas/${empresaId}/plantillas`,
+          { params }
+        );
+
+        if (data && Array.isArray(data.data)) {
+          setPlantillas(data.data);
+          setTotalRegistros(data.total ?? data.data.length);
+        } else if (Array.isArray(data)) {
+          setPlantillas(data);
+          setTotalRegistros((data as PlantillaItem[]).length);
+        } else {
+          setPlantillas([]);
+          setTotalRegistros(0);
+        }
+      } catch (err: unknown) {
+        console.error("Error al cargar plantillas:", err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error("Error al cargar plantillas:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    loadPlantillas();
+  }, [page, debouncedSearch, attackTypeFiltro, difficultyFiltro, reloadTrigger]);
 
   useEffect(() => {
-    fetchPlantillas();
-  }, [page, debouncedSearch, attackTypeFiltro, difficultyFiltro]);
+    const loadPortales = async () => {
+      const empresaId = localStorage.getItem("empresaId");
+      if (!empresaId) return;
+      try {
+        const data = await apiClient.get<PortalSimuladoItem[]>(
+          `/empresas/${empresaId}/portales`
+        );
+        if (Array.isArray(data)) {
+          setPortalesDisponibles(data);
+        }
+      } catch (err) {
+        console.error("Error al cargar portales para plantillas:", err);
+      }
+    };
+
+    loadPortales();
+  }, [reloadTrigger]);
+
+  const getPortalName = (plantilla: PlantillaItem) => {
+    if (plantilla.landingId) {
+      const found = portalesDisponibles.find((p) => p.id === plantilla.landingId);
+      if (found) return found.nombre;
+    }
+    if (plantilla.landingTipo && plantilla.landingTipo !== "generico") {
+      const foundByTipo = portalesDisponibles.find(
+        (p) => p.tipoBase === plantilla.landingTipo && (p.esGlobal ?? p.empresaId === null)
+      );
+      if (foundByTipo) return foundByTipo.nombre;
+      return plantilla.landingTipo;
+    }
+    return "Detección Automática";
+  };
 
   const handleCreatePlantilla = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/plantillas`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(formData)
+      await apiClient.post(`/empresas/${empresaId}/plantillas`, formData);
+      setIsModalOpen(false);
+      setFormData({
+        title: "",
+        subject: "",
+        bodyHtml: "",
+        attackType: "PHISHING",
+        difficulty: "MEDIO",
+        landingTipo: "generico",
+        landingId: null,
       });
-
-      if (response.ok) {
-        setIsModalOpen(false);
-        setFormData({ title: "", subject: "", bodyHtml: "", attackType: "PHISHING", difficulty: "MEDIO" });
-        showToast("Plantilla creada", "La plantilla se agregó correctamente a tu biblioteca.", "success");
-        fetchPlantillas();
-      } else {
-        const err = await response.json().catch(() => ({}));
+      showToast("Plantilla creada", "La plantilla se agregó correctamente a tu biblioteca.", "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
         showToast("No se pudo guardar", err.message || "Revisa los campos ingresados.", "error");
+      } else {
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -153,97 +216,102 @@ export default function PlantillasPage() {
     setIsSubmitting(true);
 
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       setIsSubmitting(false);
       return;
     }
 
-    const payload = {
+    const payload: UpdatePlantillaInput = {
       title: editFormData.title,
       subject: editFormData.subject,
       bodyHtml: editFormData.bodyHtml,
       attackType: editFormData.attackType,
-      difficulty: editFormData.difficulty
+      difficulty: editFormData.difficulty,
+      landingTipo: editFormData.landingTipo,
+      landingId: editFormData.landingId ?? null,
     };
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/plantillas/${editFormData.id}`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setIsEditModalOpen(false);
-        showToast("Plantilla actualizada", "Los cambios han sido guardados.", "success");
-        fetchPlantillas();
+      await apiClient.put(`/empresas/${empresaId}/plantillas/${editFormData.id}`, payload);
+      setIsEditModalOpen(false);
+      showToast("Plantilla actualizada", "Los cambios han sido guardados.", "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 403) {
+          showToast(
+            "Acción no permitida",
+            "Las plantillas globales del sistema están protegidas y no pueden ser modificadas ni eliminadas.",
+            "error"
+          );
+        } else {
+          showToast("No se pudo actualizar", err.message || "Revisa los datos ingresados.", "error");
+        }
       } else {
-        const err = await response.json().catch(() => ({}));
-        showToast("No se pudo actualizar", err.message || "Revisa los datos ingresados.", "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeletePlantilla = async () => {
+    if (!selectedPlantilla) return;
     setIsSubmitting(true);
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/plantillas/${selectedPlantilla.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        setIsDeleteModalOpen(false);
-        showToast("Plantilla eliminada", "La plantilla fue retirada de la biblioteca.", "success");
-        fetchPlantillas();
+      await apiClient.delete(`/empresas/${empresaId}/plantillas/${selectedPlantilla.id}`);
+      setIsDeleteModalOpen(false);
+      showToast("Plantilla eliminada", "La plantilla fue retirada de la biblioteca.", "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 403) {
+          showToast(
+            "Acción no permitida",
+            "Las plantillas globales del sistema están protegidas y no pueden ser modificadas ni eliminadas.",
+            "error"
+          );
+        } else {
+          showToast("No se pudo eliminar", err.message || "Error al intentar borrar el registro.", "error");
+        }
       } else {
-        const err = await response.json().catch(() => ({}));
-        showToast("No se pudo eliminar", err.message || "Error al intentar borrar el registro.", "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const openViewModal = (plantilla: any) => {
+  const openViewModal = (plantilla: PlantillaItem) => {
     setSelectedPlantilla(plantilla);
     setIsViewModalOpen(true);
   };
 
-  const openEditModal = (plantilla: any) => {
+  const openEditModal = (plantilla: PlantillaItem) => {
     setEditFormData({
       id: plantilla.id,
       title: plantilla.title || "",
       subject: plantilla.subject || "",
       bodyHtml: plantilla.bodyHtml || "",
       attackType: plantilla.attackType || "PHISHING",
-      difficulty: plantilla.difficulty || "MEDIO"
+      difficulty: plantilla.difficulty || "MEDIO",
+      landingTipo: plantilla.landingTipo || "generico",
+      landingId: plantilla.landingId ?? null,
     });
     setIsEditModalOpen(true);
   };
 
-  const openDeleteModal = (plantilla: any) => {
+  const openDeleteModal = (plantilla: PlantillaItem) => {
     setSelectedPlantilla(plantilla);
     setIsDeleteModalOpen(true);
   };
@@ -332,19 +400,71 @@ export default function PlantillasPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Tipo de Ataque</label>
-                  <select required value={formData.attackType} onChange={(e) => setFormData({...formData, attackType: e.target.value})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
+                  <select required value={formData.attackType} onChange={(e) => setFormData({...formData, attackType: e.target.value as AttackType})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
                     <option value="PHISHING">Email (Phishing)</option>
                     <option value="SMISHING">SMS (Smishing)</option>
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Dificultad</label>
-                  <select required value={formData.difficulty} onChange={(e) => setFormData({...formData, difficulty: e.target.value})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
+                  <select required value={formData.difficulty} onChange={(e) => setFormData({...formData, difficulty: e.target.value as DifficultyLevel})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
                     <option value="BAJO">Bajo</option>
                     <option value="MEDIO">Medio</option>
                     <option value="ALTO">Alto</option>
                   </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Portal Simulado (Landing de Captura)</label>
+                <select
+                  value={formData.landingId ? `id:${formData.landingId}` : (formData.landingTipo || "generico")}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.startsWith("id:")) {
+                      const pId = Number(val.replace("id:", ""));
+                      const p = portalesDisponibles.find(item => item.id === pId);
+                      setFormData({
+                        ...formData,
+                        landingId: pId,
+                        landingTipo: (p?.tipoBase as LandingTipo) || "personalizado",
+                      });
+                    } else {
+                      setFormData({
+                        ...formData,
+                        landingId: null,
+                        landingTipo: val as LandingTipo,
+                      });
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]"
+                >
+                  <option value="generico">Detección Inteligente Automática (según contenido)</option>
+                  
+                  {portalesDisponibles.some((p) => p.esGlobal ?? p.empresaId === null) && (
+                    <optgroup label="Portales Globales del Sistema">
+                      {portalesDisponibles
+                        .filter((p) => p.esGlobal ?? p.empresaId === null)
+                        .map((p) => (
+                          <option key={p.id} value={`id:${p.id}`}>
+                            {p.nombre} ({p.tipoBase})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+
+                  {portalesDisponibles.some((p) => !(p.esGlobal ?? p.empresaId === null)) && (
+                    <optgroup label="Portales Personalizados de la Organización">
+                      {portalesDisponibles
+                        .filter((p) => !(p.esGlobal ?? p.empresaId === null))
+                        .map((p) => (
+                          <option key={p.id} value={`id:${p.id}`}>
+                            {p.nombre} ({p.tituloPortal})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+                <p className="text-[11px] text-slate-400">Define la apariencia visual de la página falsa (ej. Aula Virtual UNJBG, Microsoft 365 o portal corporativo propio) a la que será redirigido el usuario.</p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Contenido HTML / Mensaje</label>
@@ -385,19 +505,71 @@ export default function PlantillasPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Tipo de Ataque</label>
-                  <select required value={editFormData.attackType} onChange={(e) => setEditFormData({...editFormData, attackType: e.target.value})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
+                  <select required value={editFormData.attackType} onChange={(e) => setEditFormData({...editFormData, attackType: e.target.value as AttackType})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
                     <option value="PHISHING">Email (Phishing)</option>
                     <option value="SMISHING">SMS (Smishing)</option>
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Dificultad</label>
-                  <select required value={editFormData.difficulty} onChange={(e) => setEditFormData({...editFormData, difficulty: e.target.value})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
+                  <select required value={editFormData.difficulty} onChange={(e) => setEditFormData({...editFormData, difficulty: e.target.value as DifficultyLevel})} className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]">
                     <option value="BAJO">Bajo</option>
                     <option value="MEDIO">Medio</option>
                     <option value="ALTO">Alto</option>
                   </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Portal Simulado (Landing de Captura)</label>
+                <select
+                  value={editFormData.landingId ? `id:${editFormData.landingId}` : (editFormData.landingTipo || "generico")}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.startsWith("id:")) {
+                      const pId = Number(val.replace("id:", ""));
+                      const p = portalesDisponibles.find(item => item.id === pId);
+                      setEditFormData({
+                        ...editFormData,
+                        landingId: pId,
+                        landingTipo: (p?.tipoBase as LandingTipo) || "personalizado",
+                      });
+                    } else {
+                      setEditFormData({
+                        ...editFormData,
+                        landingId: null,
+                        landingTipo: val as LandingTipo,
+                      });
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E5A93C]"
+                >
+                  <option value="generico">Detección Inteligente Automática (según contenido)</option>
+
+                  {portalesDisponibles.some((p) => p.esGlobal ?? p.empresaId === null) && (
+                    <optgroup label="Portales Globales del Sistema">
+                      {portalesDisponibles
+                        .filter((p) => p.esGlobal ?? p.empresaId === null)
+                        .map((p) => (
+                          <option key={p.id} value={`id:${p.id}`}>
+                            {p.nombre} ({p.tipoBase})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+
+                  {portalesDisponibles.some((p) => !(p.esGlobal ?? p.empresaId === null)) && (
+                    <optgroup label="Portales Personalizados de la Organización">
+                      {portalesDisponibles
+                        .filter((p) => !(p.esGlobal ?? p.empresaId === null))
+                        .map((p) => (
+                          <option key={p.id} value={`id:${p.id}`}>
+                            {p.nombre} ({p.tituloPortal})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+                <p className="text-[11px] text-slate-400">Define la apariencia visual de la página falsa (ej. Aula Virtual UNJBG, Microsoft 365 o portal corporativo propio) a la que será redirigido el usuario.</p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Contenido HTML / Mensaje</label>
@@ -505,7 +677,14 @@ export default function PlantillasPage() {
               <div className="flex-1 overflow-y-auto bg-white flex flex-col">
                 {/* Cabecera del correo */}
                 <div className="px-8 pt-8 pb-4">
-                  <h1 className="text-[22px] font-normal text-slate-900 mb-6">{selectedPlantilla.subject}</h1>
+                  <h1 className="text-[22px] font-normal text-slate-900 mb-4">{selectedPlantilla.subject}</h1>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs font-semibold text-slate-500">Portal simulado (Landing):</span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      <Globe className="h-3 w-3 mr-1 text-amber-600" />
+                      {getPortalName(selectedPlantilla)}
+                    </span>
+                  </div>
                   <div className="flex items-start justify-between">
                     <div className="flex gap-3">
                       <div className="h-10 w-10 rounded-full bg-[#283F50] flex items-center justify-center text-white font-medium text-lg">
@@ -631,6 +810,12 @@ export default function PlantillasPage() {
                   <p className="text-xs text-slate-500 line-clamp-1" title={plantilla.subject}>
                     {plantilla.subject || "Sin asunto"}
                   </p>
+                  <div className="mt-2.5">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 max-w-full truncate" title={getPortalName(plantilla)}>
+                      <Globe className="h-3 w-3 mr-1 text-slate-500 shrink-0" />
+                      <span className="truncate">Portal: {getPortalName(plantilla)}</span>
+                    </span>
+                  </div>
                 </div>
                 
                 <div className="absolute bottom-4 right-4">

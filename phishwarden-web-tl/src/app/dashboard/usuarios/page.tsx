@@ -11,14 +11,27 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { apiClient, ApiError } from "@/lib/api-client";
+import type {
+  EmployeeSummaryItem,
+  DepartmentItem,
+  EmployeeDetail,
+  CreateEmployeeInput,
+  UpdateEmployeeInput,
+  PaginatedResponse,
+} from "@/lib/types";
+
+function isValidUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
 
 export default function UsuariosPage() {
-  const [empleados, setEmpleados] = useState<any[]>([]);
+  const [empleados, setEmpleados] = useState<EmployeeSummaryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [totalRegistros, setTotalRegistros] = useState(0);
 
-  const [departamentos, setDepartamentos] = useState<any[]>([]);
+  const [departamentos, setDepartamentos] = useState<DepartmentItem[]>([]);
   const [isLoadingDeps, setIsLoadingDeps] = useState(true);
 
   const [page, setPage] = useState(1);
@@ -31,7 +44,7 @@ export default function UsuariosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [selectedEmpleado, setSelectedEmpleado] = useState<any>(null);
+  const [selectedEmpleado, setSelectedEmpleado] = useState<(EmployeeSummaryItem & Partial<EmployeeDetail>) | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -76,84 +89,73 @@ export default function UsuariosPage() {
     }
   };
 
-  const fetchDepartamentos = async () => {
-    setIsLoadingDeps(true);
-    try {
-      const empresaId = localStorage.getItem("empresaId");
-      const token = localStorage.getItem("token");
-      if (!empresaId || !token) return;
-
-      const response = await fetch(`http://localhost:3000/departamentos?empresaId=${empresaId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setDepartamentos(data.data || data);
-      }
-    } catch (err) {
-      console.error("Error al cargar departamentos:", err);
-    } finally {
-      setIsLoadingDeps(false);
-    }
-  };
-
-  const fetchEmpleados = async () => {
-    setIsLoading(true);
-    try {
-      const empresaId = localStorage.getItem("empresaId");
-      if (!empresaId) throw new Error("No se encontró una organización asociada.");
-
-      const url = new URL(`http://localhost:3000/empresas/${empresaId}/empleados/resumen`);
-      url.searchParams.append("page", page.toString());
-      url.searchParams.append("limit", limit.toString());
-      
-      if (debouncedSearch) {
-        url.searchParams.append("search", debouncedSearch); 
-      }
-      
-      // Enviamos exactamente 'departmentId' como lo requiere tu backend
-      if (departamentoFiltro?.id) {
-        url.searchParams.append("departmentId", departamentoFiltro.id.toString());
-      }
-
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Error HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.data && Array.isArray(data.data)) {
-        setEmpleados(data.data);
-        setTotalRegistros(data.total || data.data.length);
-      } else if (Array.isArray(data)) {
-        setEmpleados(data);
-        setTotalRegistros(data.length);
-      } else if (data.users && Array.isArray(data.users)) {
-        setEmpleados(data.users);
-        setTotalRegistros(data.total || data.users.length);
-      } else {
-        setEmpleados([]);
-        setTotalRegistros(0);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {
-    fetchDepartamentos();
-  }, []);
+    const loadDeps = async () => {
+      try {
+        const data = await apiClient.get<DepartmentItem[] | { data: DepartmentItem[] }>("/departamentos");
+        const list = Array.isArray(data) ? data : data?.data || [];
+        setDepartamentos(list);
+      } catch (err) {
+        console.error("Error al cargar departamentos:", err);
+      } finally {
+        setIsLoadingDeps(false);
+      }
+    };
+    loadDeps();
+  }, [reloadTrigger]);
 
   useEffect(() => {
-    fetchEmpleados();
-  }, [page, debouncedSearch, departamentoFiltro]);
+    const loadEmps = async () => {
+      try {
+        const empresaId = localStorage.getItem("empresaId");
+        if (!empresaId) throw new Error("No se encontró una organización asociada.");
 
-  const toggleDepartamentoFiltro = (dep: any) => {
+        const params: Record<string, string | number> = {
+          page,
+          limit,
+        };
+
+        if (debouncedSearch) {
+          params.search = debouncedSearch;
+        }
+
+        if (departamentoFiltro?.id) {
+          params.departmentId = Number(departamentoFiltro.id);
+        }
+
+        const data = await apiClient.get<PaginatedResponse<EmployeeSummaryItem>>(
+          `/empresas/${empresaId}/empleados/resumen`,
+          { params }
+        );
+
+        if (data && Array.isArray(data.data)) {
+          setEmpleados(data.data);
+          setTotalRegistros(data.total ?? data.data.length);
+        } else if (Array.isArray(data)) {
+          setEmpleados(data);
+          setTotalRegistros((data as EmployeeSummaryItem[]).length);
+        } else {
+          setEmpleados([]);
+          setTotalRegistros(0);
+        }
+      } catch (err: unknown) {
+        if (err instanceof ApiError) {
+          setError(err.message);
+        } else if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("Error al cargar empleados");
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadEmps();
+  }, [page, debouncedSearch, departamentoFiltro, reloadTrigger]);
+
+  const toggleDepartamentoFiltro = (dep: DepartmentItem) => {
     if (!dep.id) return;
     if (departamentoFiltro?.id === dep.id) {
       setDepartamentoFiltro(null); 
@@ -168,9 +170,8 @@ export default function UsuariosPage() {
     if (!file) return;
 
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       return;
     }
@@ -179,22 +180,18 @@ export default function UsuariosPage() {
     fileFormData.append("file", file);
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/empleados/import-csv`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fileFormData
-      });
-
-      if (response.ok) {
-        showToast("Éxito", "Directorio importado correctamente.", "success");
-        fetchEmpleados();
-        fetchDepartamentos();
-      } else {
-        const err = await response.json().catch(() => ({}));
+      await apiClient.post<{ message?: string; count?: number }>(
+        `/empresas/${empresaId}/empleados/import-csv`,
+        fileFormData
+      );
+      showToast("Éxito", "Directorio importado correctamente.", "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
         showToast("Error al importar", err.message || "Revisa el formato del archivo CSV.", "error");
+      } else {
+        showToast("Error de conexión", "No se pudo subir el archivo.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "No se pudo subir el archivo.", "error");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -205,16 +202,14 @@ export default function UsuariosPage() {
     setIsSubmitting(true);
 
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       setIsSubmitting(false);
       return;
     }
 
-    // Payload exacto según tu estructura de backend
-    const payload = {
+    const payload: CreateEmployeeInput = {
       name: formData.nombre,
       email: formData.correo,
       departmentId: Number(formData.departmentId),
@@ -222,28 +217,17 @@ export default function UsuariosPage() {
     };
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/empleados`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setIsModalOpen(false);
-        setFormData({ nombre: "", correo: "", departmentId: "", telefono: "" });
-        showToast("Usuario creado", `${payload.name} fue añadido al directorio.`, "success");
-        fetchEmpleados();
-        fetchDepartamentos();
+      await apiClient.post(`/empresas/${empresaId}/empleados`, payload);
+      setIsModalOpen(false);
+      setFormData({ nombre: "", correo: "", departmentId: "", telefono: "" });
+      showToast("Usuario creado", `${payload.name} fue añadido al directorio.`, "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast("No se pudo guardar", err.message || "Revisa los datos ingresados.", "error");
       } else {
-        const err = await response.json().catch(() => ({}));
-        const mensajeTraducido = err.message ? (Array.isArray(err.message) ? err.message.join(", ") : err.message) : "Revisa los datos ingresados.";
-        showToast("No se pudo guardar", mensajeTraducido, "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -254,10 +238,15 @@ export default function UsuariosPage() {
     setIsSubmitting(true);
 
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!isValidUUID(editFormData.id)) {
+      showToast("Error", "Identificador de empleado inválido.", "error");
       setIsSubmitting(false);
       return;
     }
@@ -267,8 +256,7 @@ export default function UsuariosPage() {
       phoneStr = `+51 ${phoneStr}`;
     }
 
-    // Payload exacto según tu estructura
-    const payload = {
+    const payload: UpdateEmployeeInput = {
       name: editFormData.nombre,
       email: editFormData.correo,
       departmentId: Number(editFormData.departmentId),
@@ -276,27 +264,16 @@ export default function UsuariosPage() {
     };
 
     try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/empleados/${editFormData.id}`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setIsEditModalOpen(false);
-        showToast("Usuario actualizado", `Los datos de ${payload.name} fueron actualizados.`, "success");
-        fetchEmpleados();
-        fetchDepartamentos();
+      await apiClient.put(`/empresas/${empresaId}/empleados/${editFormData.id}`, payload);
+      setIsEditModalOpen(false);
+      showToast("Usuario actualizado", `Los datos de ${payload.name} fueron actualizados.`, "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast("No se pudo actualizar", err.message || "Revisa los datos ingresados.", "error");
       } else {
-        const err = await response.json().catch(() => ({}));
-        const mensajeTraducido = err.message ? (Array.isArray(err.message) ? err.message.join(", ") : err.message) : "Revisa los datos ingresados.";
-        showToast("No se pudo actualizar", mensajeTraducido, "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -305,89 +282,84 @@ export default function UsuariosPage() {
   const handleDeleteUser = async () => {
     setIsSubmitting(true);
     const empresaId = localStorage.getItem("empresaId");
-    const token = localStorage.getItem("token");
 
-    if (!empresaId || !token) {
+    if (!empresaId) {
       showToast("Error de sesión", "Vuelve a iniciar sesión.", "error");
       setIsSubmitting(false);
       return;
     }
 
-    try {
-      const response = await fetch(`http://localhost:3000/empresas/${empresaId}/empleados/${selectedEmpleado.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
+    if (!selectedEmpleado?.id || !isValidUUID(selectedEmpleado.id)) {
+      showToast("Error", "Identificador de empleado inválido.", "error");
+      setIsSubmitting(false);
+      return;
+    }
 
-      if (response.ok) {
-        setIsDeleteModalOpen(false);
-        showToast("Usuario eliminado", "El empleado fue retirado del directorio.", "success");
-        fetchEmpleados();
-        fetchDepartamentos();
-      } else {
-        const err = await response.json().catch(() => ({}));
+    try {
+      await apiClient.delete(`/empresas/${empresaId}/empleados/${selectedEmpleado.id}`);
+      setIsDeleteModalOpen(false);
+      showToast("Usuario eliminado", "El empleado fue retirado del directorio.", "success");
+      setReloadTrigger(prev => prev + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
         showToast("No se pudo eliminar", err.message || "Error al intentar borrar el registro.", "error");
+      } else {
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const openViewModal = async (emp: any) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+  const openViewModal = async (emp: EmployeeSummaryItem) => {
+    if (!isValidUUID(emp.id)) {
+      showToast("Error", "Identificador de empleado inválido.", "error");
+      return;
+    }
 
     try {
-      const response = await fetch(`http://localhost:3000/empleados/${emp.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const detalleData = await response.json();
-        setSelectedEmpleado({ ...emp, ...detalleData });
-        setIsViewModalOpen(true);
+      const detalleData = await apiClient.get<EmployeeDetail>(`/empleados/${emp.id}`);
+      setSelectedEmpleado({ ...emp, ...detalleData });
+      setIsViewModalOpen(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast("No se pudo cargar", err.message || "Error al obtener los detalles del empleado.", "error");
       } else {
-        showToast("No se pudo cargar", "Error al obtener los detalles del empleado.", "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     }
   };
 
-  const openEditModal = async (emp: any) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+  const openEditModal = async (emp: EmployeeSummaryItem) => {
+    if (!isValidUUID(emp.id)) {
+      showToast("Error", "Identificador de empleado inválido.", "error");
+      return;
+    }
 
     try {
-      const response = await fetch(`http://localhost:3000/empleados/${emp.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const detalleData = await apiClient.get<EmployeeDetail>(`/empleados/${emp.id}`);
+      const fullEmp = { ...emp, ...detalleData };
+
+      let cleanPhone = fullEmp.telefono || fullEmp.phone || "";
+      cleanPhone = cleanPhone.replace("+51 ", "");
+
+      // Buscamos el ID del departamento desde los datos combinados
+      const depId = fullEmp.departmentId || fullEmp.departamentoId || (typeof fullEmp.departamento === 'object' && fullEmp.departamento ? fullEmp.departamento.id : "") || "";
+
+      setEditFormData({
+        id: fullEmp.id || "",
+        nombre: fullEmp.nombre || fullEmp.name || "",
+        correo: fullEmp.correo || fullEmp.email || "",
+        departmentId: depId.toString(),
+        telefono: cleanPhone
       });
-
-      if (response.ok) {
-        const detalleData = await response.json();
-        const fullEmp = { ...emp, ...detalleData };
-
-        let cleanPhone = fullEmp.telefono || fullEmp.phone || "";
-        cleanPhone = cleanPhone.replace("+51 ", "");
-
-        // Buscamos el ID del departamento desde los datos combinados
-        const depId = fullEmp.departmentId || fullEmp.departamentoId || fullEmp.departamento?.id || "";
-
-        setEditFormData({
-          id: fullEmp.id,
-          nombre: fullEmp.nombre || fullEmp.name || "",
-          correo: fullEmp.correo || fullEmp.email || "",
-          departmentId: depId.toString(),
-          telefono: cleanPhone
-        });
-        setIsEditModalOpen(true);
+      setIsEditModalOpen(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast("No se pudo cargar", err.message || "Error al obtener los detalles para editar.", "error");
       } else {
-        showToast("No se pudo cargar", "Error al obtener los detalles para editar.", "error");
+        showToast("Error de conexión", "El servidor no responde.", "error");
       }
-    } catch (error) {
-      showToast("Error de conexión", "El servidor no responde.", "error");
     }
   };
 
@@ -547,11 +519,11 @@ export default function UsuariosPage() {
             <div className="p-6 space-y-4">
               <div className="flex items-center gap-4 mb-6">
                 <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-600 border border-slate-200">
-                  {getInitials(selectedEmpleado.nombre || selectedEmpleado.name)}
+                  {getInitials(selectedEmpleado.nombre || selectedEmpleado.name || "")}
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold text-[#283F50]">{selectedEmpleado.nombre || selectedEmpleado.name}</h3>
-                  <p className="text-sm text-slate-500">{selectedEmpleado.departamento?.nombre || selectedEmpleado.departamento || "Sin área asignada"}</p>
+                  <p className="text-sm text-slate-500">{typeof selectedEmpleado.departamento === 'object' && selectedEmpleado.departamento ? selectedEmpleado.departamento.nombre : (selectedEmpleado.departamento || "Sin área asignada")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
@@ -751,13 +723,13 @@ export default function UsuariosPage() {
             <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
               <tbody className="divide-y divide-slate-100">
                 {empleados.map((emp, index) => {
-                  const riesgoInfo = getRiesgoInfo(emp.score);
+                  const riesgoInfo = getRiesgoInfo(emp.scoreRiesgo ?? emp.score ?? 0);
                   return (
                     <tr key={emp.id || index} className="hover:bg-slate-50 transition-colors group">
                       <td className="py-4 pl-6 pr-4">
                         <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 border border-slate-200 flex-shrink-0">
-                            {getInitials(emp.nombre || emp.name)}
+                            {getInitials(emp.nombre || emp.name || "")}
                           </div>
                           <div>
                             <p className="font-semibold text-[#283F50]">{emp.nombre || emp.name || "Sin nombre"}</p>
@@ -766,11 +738,11 @@ export default function UsuariosPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4 text-slate-500">
-                        {emp.departamento?.nombre || emp.departamento || "Sin área"}
+                        {typeof emp.departamento === 'object' && emp.departamento ? emp.departamento.nombre : (emp.departamento || "Sin área")}
                       </td>
                       <td className="py-4 px-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${riesgoInfo.color}`}>
-                          {riesgoInfo.texto} ({emp.score || 0})
+                          {riesgoInfo.texto} ({emp.scoreRiesgo ?? emp.score ?? 0})
                         </span>
                       </td>
                       <td className="py-4 pl-4 pr-6 text-right">
