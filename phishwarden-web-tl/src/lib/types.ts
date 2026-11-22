@@ -27,9 +27,18 @@ export interface AdminProfile {
   empresa: {
     id: number;
     nombre: string;
+    codigoAcceso?: string;
   } | null;
   name?: string;
   email?: string;
+  codigoAcceso?: string;
+}
+
+export interface CompanyDetail {
+  id: number;
+  nombre: string;
+  codigoAcceso: string;
+  fechaCreacion?: string;
 }
 
 export interface UpdateAdminProfileInput {

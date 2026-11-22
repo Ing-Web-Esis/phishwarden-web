@@ -55,11 +55,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (resolvedEmpresaId !== undefined && resolvedEmpresaId !== null) {
           localStorage.setItem("empresaId", String(resolvedEmpresaId));
         }
+
+        let codigo = data.empresa?.codigoAcceso || data.codigoAcceso;
+        if (!codigo && resolvedEmpresaId) {
+          try {
+            const companyData = await apiClient.get<{ codigoAcceso?: string }>(`/empresas/${resolvedEmpresaId}`);
+            if (companyData?.codigoAcceso) {
+              codigo = companyData.codigoAcceso;
+              if (data.empresa) {
+                data.empresa.codigoAcceso = codigo;
+              }
+            }
+          } catch {
+            // Silencioso si falla la consulta secundaria
+          }
+        }
+
+        if (codigo) {
+          localStorage.setItem("codigoAcceso", codigo);
+        }
+
         setIsChecking(false);
       } catch (error) {
         console.error("Error al obtener perfil del admin:", error);
         localStorage.removeItem("token");
         localStorage.removeItem("empresaId");
+        localStorage.removeItem("codigoAcceso");
         router.push("/login");
       }
     };
@@ -70,6 +91,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("empresaId");
+    localStorage.removeItem("codigoAcceso");
     localStorage.removeItem("phishWardenUser");
     router.push("/login");
   };

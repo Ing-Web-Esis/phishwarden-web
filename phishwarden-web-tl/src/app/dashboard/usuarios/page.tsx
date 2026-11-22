@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, FileSpreadsheet, Search, MoreHorizontal, Loader2, AlertCircle, ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Eye, Edit, Trash2 } from "lucide-react";
+import { 
+  Upload, FileSpreadsheet, Search, MoreHorizontal, Loader2, AlertCircle, 
+  ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Eye, Edit, Trash2,
+  Smartphone, Copy, Check
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +23,8 @@ import type {
   CreateEmployeeInput,
   UpdateEmployeeInput,
   PaginatedResponse,
+  AdminProfile,
+  CompanyDetail,
 } from "@/lib/types";
 
 function isValidUUID(id: string): boolean {
@@ -40,6 +46,10 @@ export default function UsuariosPage() {
   
   const [departamentoFiltro, setDepartamentoFiltro] = useState<{id: string | number, nombre: string} | null>(null);
   const limit = 10; 
+
+  const [codigoAcceso, setCodigoAcceso] = useState<string>("");
+  const [codigoCopiado, setCodigoCopiado] = useState(false);
+  const [filtroRiesgo, setFiltroRiesgo] = useState<"todos" | "bajo" | "medio" | "critico">("todos");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,6 +87,56 @@ export default function UsuariosPage() {
 
   const showToast = (title: string, message: string, type: "success" | "error") => {
     setToast({ visible: true, title, message, type });
+  };
+
+  useEffect(() => {
+    const loadCodigoAcceso = async () => {
+      const cached = localStorage.getItem("codigoAcceso");
+      if (cached) {
+        setCodigoAcceso(cached);
+        return;
+      }
+
+      try {
+        const empresaId = localStorage.getItem("empresaId");
+        if (empresaId) {
+          const comp = await apiClient.get<CompanyDetail>(`/empresas/${empresaId}`);
+          if (comp?.codigoAcceso) {
+            setCodigoAcceso(comp.codigoAcceso);
+            localStorage.setItem("codigoAcceso", comp.codigoAcceso);
+            return;
+          }
+        }
+
+        const perfil = await apiClient.get<AdminProfile>("/auth/me");
+        const code = perfil.empresa?.codigoAcceso || perfil.codigoAcceso;
+        if (code) {
+          setCodigoAcceso(code);
+          localStorage.setItem("codigoAcceso", code);
+        }
+      } catch (err) {
+        console.error("Error al cargar código de acceso:", err);
+      }
+    };
+
+    loadCodigoAcceso();
+  }, []);
+
+  const handleCopyCodigo = async () => {
+    if (!codigoAcceso) return;
+    try {
+      await navigator.clipboard.writeText(codigoAcceso);
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = codigoAcceso;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    setCodigoCopiado(true);
+    showToast("Código copiado", "Código de acceso copiado al portapapeles", "success");
+    setTimeout(() => setCodigoCopiado(false), 2500);
   };
 
   const scrollDeps = (direction: "left" | "right") => {
@@ -370,12 +430,43 @@ export default function UsuariosPage() {
     return nombre.substring(0, 2).toUpperCase();
   };
 
-  const getRiesgoInfo = (score: number) => {
-    const valor = Number(score) || 0;
-    if (valor >= 70) return { texto: "Alto", color: "bg-red-50 text-red-600" };
-    if (valor >= 30) return { texto: "Medio", color: "bg-orange-50 text-orange-600" };
-    return { texto: "Bajo", color: "bg-amber-50 text-amber-600" };
+  const getRiesgoInfo = (score: number | null | undefined) => {
+    const valor = score !== undefined && score !== null ? Number(score) : 0;
+    if (valor >= 70) {
+      return {
+        texto: "Riesgo Crítico",
+        color: "bg-rose-50 text-rose-700 border border-rose-200",
+        barColor: "bg-rose-500",
+      };
+    }
+    if (valor >= 30) {
+      return {
+        texto: "Riesgo Medio",
+        color: "bg-amber-50 text-amber-700 border border-amber-200",
+        barColor: "bg-amber-500",
+      };
+    }
+    return {
+      texto: "Riesgo Bajo / Seguro",
+      color: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+      barColor: "bg-emerald-500",
+    };
   };
+
+  const empleadosMostrados = empleados.filter((emp) => {
+    const score = Number(emp.scoreRiesgo ?? emp.score ?? 0);
+    if (filtroRiesgo === "bajo") return score < 30;
+    if (filtroRiesgo === "medio") return score >= 30 && score < 70;
+    if (filtroRiesgo === "critico") return score >= 70;
+    return true;
+  });
+
+  const conteoBajo = empleados.filter(e => Number(e.scoreRiesgo ?? e.score ?? 0) < 30).length;
+  const conteoMedio = empleados.filter(e => {
+    const s = Number(e.scoreRiesgo ?? e.score ?? 0);
+    return s >= 30 && s < 70;
+  }).length;
+  const conteoCritico = empleados.filter(e => Number(e.scoreRiesgo ?? e.score ?? 0) >= 70).length;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 relative">
@@ -537,7 +628,19 @@ export default function UsuariosPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-slate-500 uppercase">Riesgo Phishing</p>
-                  <p className="text-sm text-slate-700 font-bold">{selectedEmpleado.scoreRiesgo ?? selectedEmpleado.score ?? 0}%</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-700 font-bold">
+                      {selectedEmpleado.scoreRiesgo ?? selectedEmpleado.score ?? 0}%
+                    </span>
+                    {(() => {
+                      const info = getRiesgoInfo(selectedEmpleado.scoreRiesgo ?? selectedEmpleado.score ?? 0);
+                      return (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${info.color}`}>
+                          {info.texto}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-slate-500 uppercase">Días Seguros (Racha)</p>
@@ -584,6 +687,49 @@ export default function UsuariosPage() {
         <Button onClick={() => setIsModalOpen(true)} className="bg-[#E5A93C] text-[#283F50] hover:bg-[#D49A35] font-semibold h-11 px-6 rounded-lg shadow-sm">
           <Plus className="mr-2 h-5 w-5" /> Agregar usuario
         </Button>
+      </div>
+
+      {/* TARJETA CÓDIGO DE VINCULACIÓN MÓVIL */}
+      <div className="bg-white rounded-xl p-5 md:p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="flex items-start md:items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-[#283F50] border border-slate-200 flex-shrink-0">
+            <Smartphone className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-800 text-base">Código de vinculación móvil</h3>
+            <p className="text-xs md:text-sm text-slate-500 mt-0.5">
+              Los colaboradores utilizan este código junto a su correo corporativo para vincular la aplicación móvil PhishWarden.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg p-2 pl-3 self-start md:self-auto">
+          <div className="flex flex-col pr-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Código de acceso</span>
+            <span className="font-mono text-base font-bold text-[#283F50] tracking-wider">
+              {codigoAcceso || "..."}
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleCopyCodigo}
+            disabled={!codigoAcceso}
+            className="h-9 px-3 bg-white hover:bg-slate-50 border-slate-200 text-slate-700 font-medium transition-all"
+          >
+            {codigoCopiado ? (
+              <>
+                <Check className="h-4 w-4 mr-1.5 text-emerald-600" />
+                <span className="text-emerald-700 text-xs font-semibold">Copiado</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4 mr-1.5 text-slate-500" />
+                <span className="text-xs font-medium">Copiar</span>
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className="bg-[#283F50] rounded-xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-md">
@@ -671,30 +817,84 @@ export default function UsuariosPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-[#283F50]">Directorio de empleados</h3>
-              <p className="text-sm text-slate-500">{isLoading ? "Buscando..." : `${totalRegistros} usuarios encontrados`}</p>
+        <div className="p-6 border-b border-slate-100 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-[#283F50]">Directorio de empleados</h3>
+                <p className="text-sm text-slate-500">{isLoading ? "Buscando..." : `${totalRegistros} usuarios encontrados`}</p>
+              </div>
+              
+              {/* TAG DE FILTRO */}
+              {departamentoFiltro && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#E5A93C]/20 text-[#283F50] border border-[#E5A93C]/30 ml-0 sm:ml-4">
+                  Filtro: {departamentoFiltro.nombre}
+                  <button 
+                    onClick={() => { setDepartamentoFiltro(null); setPage(1); }} 
+                    className="hover:bg-[#E5A93C]/30 rounded-full p-0.5 transition-colors focus:outline-none"
+                    aria-label="Quitar filtro"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
             </div>
-            
-            {/* TAG DE FILTRO */}
-            {departamentoFiltro && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#E5A93C]/20 text-[#283F50] border border-[#E5A93C]/30 ml-0 sm:ml-4">
-                Filtro: {departamentoFiltro.nombre}
-                <button 
-                  onClick={() => { setDepartamentoFiltro(null); setPage(1); }} 
-                  className="hover:bg-[#E5A93C]/30 rounded-full p-0.5 transition-colors focus:outline-none"
-                  aria-label="Quitar filtro"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            )}
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input placeholder="Buscar empleado..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 bg-slate-50 border-slate-200 h-10 rounded-lg focus-visible:ring-[#E5A93C]"/>
+            </div>
           </div>
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input placeholder="Buscar empleado..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 bg-slate-50 border-slate-200 h-10 rounded-lg focus-visible:ring-[#E5A93C]"/>
+
+          {/* FILTROS RÁPIDOS POR NIVEL DE RIESGO */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+            <span className="text-slate-400 font-medium mr-1">Nivel de riesgo:</span>
+            <button
+              type="button"
+              onClick={() => setFiltroRiesgo("todos")}
+              className={`px-3 py-1 rounded-full font-medium transition-colors ${
+                filtroRiesgo === "todos"
+                  ? "bg-[#283F50] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Todos ({empleados.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRiesgo("bajo")}
+              className={`px-3 py-1 rounded-full font-medium transition-colors flex items-center gap-1.5 ${
+                filtroRiesgo === "bajo"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+              }`}
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Bajo / Seguro ({conteoBajo})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRiesgo("medio")}
+              className={`px-3 py-1 rounded-full font-medium transition-colors flex items-center gap-1.5 ${
+                filtroRiesgo === "medio"
+                  ? "bg-amber-600 text-white"
+                  : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+              }`}
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              Medio ({conteoMedio})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRiesgo("critico")}
+              className={`px-3 py-1 rounded-full font-medium transition-colors flex items-center gap-1.5 ${
+                filtroRiesgo === "critico"
+                  ? "bg-rose-600 text-white"
+                  : "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+              }`}
+            >
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              Crítico ({conteoCritico})
+            </button>
           </div>
         </div>
         
@@ -712,18 +912,25 @@ export default function UsuariosPage() {
               <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
-          {!isLoading && !error && empleados.length === 0 && (
+          {!isLoading && !error && empleadosMostrados.length === 0 && (
             <div className="flex flex-col items-center justify-center h-48 text-slate-400">
               <Search className="h-10 w-10 mb-4 opacity-50" />
               <p className="font-medium text-[#283F50]">No se encontraron resultados</p>
-              <p className="text-sm">{departamentoFiltro ? "No hay usuarios en este departamento." : "Prueba con otro nombre o correo."}</p>
+              <p className="text-sm">
+                {filtroRiesgo !== "todos"
+                  ? "No hay colaboradores en este rango de riesgo en la página actual."
+                  : departamentoFiltro
+                  ? "No hay usuarios en este departamento."
+                  : "Prueba con otro nombre o correo."}
+              </p>
             </div>
           )}
-          {!isLoading && !error && empleados.length > 0 && (
+          {!isLoading && !error && empleadosMostrados.length > 0 && (
             <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
               <tbody className="divide-y divide-slate-100">
-                {empleados.map((emp, index) => {
+                {empleadosMostrados.map((emp, index) => {
                   const riesgoInfo = getRiesgoInfo(emp.scoreRiesgo ?? emp.score ?? 0);
+                  const scoreVal = Number(emp.scoreRiesgo ?? emp.score ?? 0);
                   return (
                     <tr key={emp.id || index} className="hover:bg-slate-50 transition-colors group">
                       <td className="py-4 pl-6 pr-4">
@@ -741,9 +948,22 @@ export default function UsuariosPage() {
                         {typeof emp.departamento === 'object' && emp.departamento ? emp.departamento.nombre : (emp.departamento || "Sin área")}
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${riesgoInfo.color}`}>
-                          {riesgoInfo.texto} ({emp.scoreRiesgo ?? emp.score ?? 0})
-                        </span>
+                        <div className="flex flex-col gap-1.5 min-w-[150px]">
+                          <div className="flex items-center justify-between">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${riesgoInfo.color}`}>
+                              {riesgoInfo.texto}
+                            </span>
+                            <span className="text-xs font-bold text-slate-700">
+                              {scoreVal}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${riesgoInfo.barColor}`}
+                              style={{ width: `${Math.min(100, Math.max(0, scoreVal))}%` }}
+                            />
+                          </div>
+                        </div>
                       </td>
                       <td className="py-4 pl-4 pr-6 text-right">
                         <DropdownMenu>

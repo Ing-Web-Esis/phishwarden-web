@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, AlertCircle, X, Save, User, Mail, Building2, Lock, Edit2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, X, Save, User, Mail, Building2, Lock, Edit2, Smartphone, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient, ApiError } from "@/lib/api-client";
-import type { AdminProfile, UpdateAdminProfileInput } from "@/lib/types";
+import type { AdminProfile, UpdateAdminProfileInput, CompanyDetail } from "@/lib/types";
 
 export default function PerfilPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [codigoAcceso, setCodigoAcceso] = useState("");
+  const [codigoCopiado, setCodigoCopiado] = useState(false);
   
   const [toast, setToast] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
     visible: false, title: "", message: "", type: "success"
@@ -60,6 +62,22 @@ export default function PerfilPage() {
         };
         setFormData(fetchedData);
         setOriginalData(fetchedData);
+
+        let code = data.empresa?.codigoAcceso || data.codigoAcceso || localStorage.getItem("codigoAcceso") || "";
+        if (!code && data.empresa?.id) {
+          try {
+            const comp = await apiClient.get<CompanyDetail>(`/empresas/${data.empresa.id}`);
+            if (comp?.codigoAcceso) {
+              code = comp.codigoAcceso;
+            }
+          } catch {
+            // Silencioso
+          }
+        }
+        if (code) {
+          setCodigoAcceso(code);
+          localStorage.setItem("codigoAcceso", code);
+        }
       } catch {
         showToast("Error", "No se pudo cargar la información del perfil.", "error");
       } finally {
@@ -69,6 +87,23 @@ export default function PerfilPage() {
 
     fetchPerfil();
   }, []);
+
+  const handleCopyCodigo = async () => {
+    if (!codigoAcceso) return;
+    try {
+      await navigator.clipboard.writeText(codigoAcceso);
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = codigoAcceso;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    setCodigoCopiado(true);
+    showToast("Código copiado", "Código de acceso copiado al portapapeles", "success");
+    setTimeout(() => setCodigoCopiado(false), 2500);
+  };
 
   const handleCancel = () => {
     setFormData(originalData); // Restauramos los datos originales
@@ -237,6 +272,43 @@ export default function PerfilPage() {
                 />
               </div>
             </div>
+
+            {codigoAcceso && (
+              <div className="space-y-2 md:col-span-2 pt-2 border-t border-slate-100">
+                <label className="text-sm font-medium text-slate-700">Código de vinculación móvil</label>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <Smartphone className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input 
+                      disabled
+                      value={codigoAcceso}
+                      className="pl-9 font-mono font-semibold tracking-wider bg-slate-50 text-slate-700 border-slate-200"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCopyCodigo}
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 h-10 px-4"
+                  >
+                    {codigoCopiado ? (
+                      <>
+                        <Check className="h-4 w-4 text-emerald-600" />
+                        <span className="text-emerald-700 text-xs font-semibold">Copiado</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 text-slate-500" />
+                        <span className="text-xs font-medium">Copiar</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Los colaboradores ingresan este código en la aplicación móvil de PhishWarden junto con su correo corporativo.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

@@ -186,11 +186,11 @@ export default function DashboardHomePage() {
             <div className="relative w-40 h-40">
               {/* SVG Dona Falsa */}
               <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
-                {/* Riesgo Bajo (62%) */}
-                <circle cx="50" cy="50" r="40" fill="none" stroke="#E5A93C" strokeWidth="15" strokeDasharray="251.2" strokeDashoffset="95.45" />
-                {/* Riesgo Medio (24%) */}
-                <circle cx="50" cy="50" r="40" fill="none" stroke="#F97316" strokeWidth="15" strokeDasharray="251.2" strokeDashoffset="190.9" className="transform origin-center rotate-[223deg]" />
-                {/* Riesgo Alto (14%) */}
+                {/* Riesgo Bajo / Seguro (0-29%) */}
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#10B981" strokeWidth="15" strokeDasharray="251.2" strokeDashoffset="95.45" />
+                {/* Riesgo Medio (30-69%) */}
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#F59E0B" strokeWidth="15" strokeDasharray="251.2" strokeDashoffset="190.9" className="transform origin-center rotate-[223deg]" />
+                {/* Riesgo Crítico (70-100%) */}
                 <circle cx="50" cy="50" r="40" fill="none" stroke="#EF4444" strokeWidth="15" strokeDasharray="251.2" strokeDashoffset="216.03" className="transform origin-center rotate-[309deg]" />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -202,22 +202,22 @@ export default function DashboardHomePage() {
             <div className="w-full space-y-3 mt-8">
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#E5A93C]"></div>
-                  <span className="text-slate-600">Bajo riesgo</span>
+                  <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
+                  <span className="text-slate-600">Bajo riesgo / Seguro (0-29%)</span>
                 </div>
                 <span className="font-bold text-[#283F50]">62%</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#F97316]"></div>
-                  <span className="text-slate-600">Riesgo medio</span>
+                  <div className="w-3 h-3 rounded-full bg-[#F59E0B]"></div>
+                  <span className="text-slate-600">Riesgo medio (30-69%)</span>
                 </div>
                 <span className="font-bold text-[#283F50]">24%</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-[#EF4444]"></div>
-                  <span className="text-slate-600">Alto riesgo</span>
+                  <span className="text-slate-600">Riesgo crítico (70-100%)</span>
                 </div>
                 <span className="font-bold text-[#283F50]">14%</span>
               </div>
