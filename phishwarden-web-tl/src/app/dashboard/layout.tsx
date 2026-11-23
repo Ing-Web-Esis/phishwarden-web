@@ -38,35 +38,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isConfiguracion = pathname.includes("/dashboard/configuracion");
   const isAyuda = pathname.includes("/dashboard/ayuda");
 
-  const [adminUser, setAdminUser] = useState<AdminProfile | null>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("adminProfile");
-      if (cached) {
-        try {
-          return JSON.parse(cached);
-        } catch {
-          // ignore
-        }
-      }
-    }
-    return null;
-  });
-  const [isChecking, setIsChecking] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return !localStorage.getItem("token");
-    }
-    return true;
-  });
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [adminUser, setAdminUser] = useState<AdminProfile | null>(null);
 
   useEffect(() => {
-    const fetchPerfil = async () => {
-      const token = localStorage.getItem("token");
-      
-      if (!token) {
-        router.push("/login");
-        return;
-      }
+    setIsMounted(true);
+    const token = localStorage.getItem("token");
+    
+    if (!token) {
+      router.push("/login");
+      return;
+    }
 
+    const cached = localStorage.getItem("adminProfile");
+    if (cached) {
+      try {
+        setAdminUser(JSON.parse(cached));
+      } catch {
+        // ignore
+      }
+    }
+
+    const fetchPerfil = async () => {
       try {
         const data = await apiClient.get<AdminProfile>("/auth/me");
         setAdminUser(data);
@@ -90,8 +83,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (codigo) {
           localStorage.setItem("codigoAcceso", codigo);
         }
-
-        setIsChecking(false);
       } catch (error) {
         console.error("Error al obtener perfil del admin:", error);
         localStorage.removeItem("token");
@@ -119,6 +110,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     localStorage.removeItem("empresaId");
     localStorage.removeItem("codigoAcceso");
     localStorage.removeItem("phishWardenUser");
+    localStorage.removeItem("adminProfile");
+    localStorage.removeItem("adminNombre");
     router.push("/login");
   };
 
@@ -131,10 +124,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const parts = name.split(" ");
     if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     return name.substring(0, 2).toUpperCase();
-  }
-
-  if (isChecking) {
-    return <div className="flex h-screen w-full items-center justify-center bg-slate-50"></div>;
   }
 
   return (

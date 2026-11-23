@@ -54,14 +54,7 @@ function getMonthName(periodo: string): string {
 }
 
 export default function DashboardHomePage() {
-  const [primerNombre, setPrimerNombre] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("adminNombre");
-      if (cached) return cached.split(" ")[0];
-    }
-    return "";
-  });
-
+  const [primerNombre, setPrimerNombre] = useState<string>("");
   const [saludoHora, setSaludoHora] = useState<string>("Buenos días");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -73,24 +66,12 @@ export default function DashboardHomePage() {
   const [recentCampaigns, setRecentCampaigns] = useState<CampaignItem[]>([]);
   const [windowMonths, setWindowMonths] = useState<number>(6);
 
-  // Determinar saludo según hora del día
-  useEffect(() => {
-    const hora = new Date().getHours();
-    if (hora < 12) {
-      setSaludoHora("Buenos días");
-    } else if (hora < 19) {
-      setSaludoHora("Buenas tardes");
-    } else {
-      setSaludoHora("Buenas noches");
-    }
-  }, []);
-
   const loadDashboardData = async (forcedEmpresaId?: number) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const token = localStorage.getItem("token");
     if (!token) return;
 
     let targetEmpresaId = forcedEmpresaId;
-    if (!targetEmpresaId && typeof window !== "undefined") {
+    if (!targetEmpresaId) {
       const stored = localStorage.getItem("empresaId");
       if (stored) targetEmpresaId = Number(stored);
     }
@@ -151,11 +132,28 @@ export default function DashboardHomePage() {
   };
 
   useEffect(() => {
+    // 1. Determinar saludo según hora del día en el cliente
+    const hora = new Date().getHours();
+    if (hora < 12) {
+      setSaludoHora("Buenos días");
+    } else if (hora < 19) {
+      setSaludoHora("Buenas tardes");
+    } else {
+      setSaludoHora("Buenas noches");
+    }
+
+    // 2. Hidratar nombre en caché de localStorage tras montaje
+    const cachedName = localStorage.getItem("adminNombre");
+    if (cachedName) {
+      setPrimerNombre(cachedName.split(" ")[0]);
+    }
+
+    // 3. Cargar datos del dashboard
     loadDashboardData();
 
     const handleSessionUpdate = () => {
-      const cachedName = localStorage.getItem("adminNombre");
-      if (cachedName) setPrimerNombre(cachedName.split(" ")[0]);
+      const updatedName = localStorage.getItem("adminNombre");
+      if (updatedName) setPrimerNombre(updatedName.split(" ")[0]);
       const storedEmpresaId = localStorage.getItem("empresaId");
       if (storedEmpresaId) loadDashboardData(Number(storedEmpresaId));
     };
