@@ -34,9 +34,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isUsuarios = pathname.includes("/dashboard/usuarios");
   const isPlantillas = pathname.includes("/dashboard/plantillas");
   const isPortales = pathname.includes("/dashboard/portales");
+  const isReportes = pathname.includes("/dashboard/reportes");
+  const isConfiguracion = pathname.includes("/dashboard/configuracion");
+  const isAyuda = pathname.includes("/dashboard/ayuda");
 
-  const [adminUser, setAdminUser] = useState<AdminProfile | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
+  const [adminUser, setAdminUser] = useState<AdminProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("adminProfile");
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return null;
+  });
+  const [isChecking, setIsChecking] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return !localStorage.getItem("token");
+    }
+    return true;
+  });
 
   useEffect(() => {
     const fetchPerfil = async () => {
@@ -50,27 +70,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try {
         const data = await apiClient.get<AdminProfile>("/auth/me");
         setAdminUser(data);
-        
+        localStorage.setItem("adminProfile", JSON.stringify(data));
+
+        const fullName = data.nombre || data.name || "";
+        if (fullName) {
+          localStorage.setItem("adminNombre", fullName);
+        }
+
         const resolvedEmpresaId = data.empresaId ?? data.empresa?.id;
         if (resolvedEmpresaId !== undefined && resolvedEmpresaId !== null) {
           localStorage.setItem("empresaId", String(resolvedEmpresaId));
         }
 
-        let codigo = data.empresa?.codigoAcceso || data.codigoAcceso;
-        if (!codigo && resolvedEmpresaId) {
-          try {
-            const companyData = await apiClient.get<{ codigoAcceso?: string }>(`/empresas/${resolvedEmpresaId}`);
-            if (companyData?.codigoAcceso) {
-              codigo = companyData.codigoAcceso;
-              if (data.empresa) {
-                data.empresa.codigoAcceso = codigo;
-              }
-            }
-          } catch {
-            // Silencioso si falla la consulta secundaria
-          }
+        if (data.empresa?.nombre) {
+          localStorage.setItem("nombreEmpresa", data.empresa.nombre);
         }
 
+        const codigo = data.empresa?.codigoAcceso || data.codigoAcceso;
         if (codigo) {
           localStorage.setItem("codigoAcceso", codigo);
         }
@@ -81,11 +97,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         localStorage.removeItem("token");
         localStorage.removeItem("empresaId");
         localStorage.removeItem("codigoAcceso");
+        localStorage.removeItem("adminProfile");
+        localStorage.removeItem("adminNombre");
         router.push("/login");
       }
     };
 
     fetchPerfil();
+
+    const handleSessionUpdate = () => {
+      fetchPerfil();
+    };
+    window.addEventListener("phishwarden-session-updated", handleSessionUpdate);
+    return () => {
+      window.removeEventListener("phishwarden-session-updated", handleSessionUpdate);
+    };
   }, [router]);
 
   const handleLogout = () => {
@@ -201,7 +227,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="text-sm font-medium">Gestión de usuarios</span>
             </Link>
 
-            <Link href="#" className="flex items-center gap-3 px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
+            <Link 
+              href="/dashboard/reportes" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isReportes 
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]" 
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
               <BarChart2 className="h-5 w-5" />
               <span className="text-sm font-medium">Reportes ejecutivos</span>
             </Link>
@@ -210,11 +243,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="p-4">
           <nav className="space-y-1 mb-4">
-            <Link href="#" className="flex items-center gap-3 px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
+            <Link 
+              href="/dashboard/configuracion" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isConfiguracion
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]"
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
               <Settings className="h-5 w-5" />
               <span className="text-sm font-medium">Configuración</span>
             </Link>
-            <Link href="#" className="flex items-center gap-3 px-4 py-3 rounded-lg border border-transparent text-slate-300 hover:text-white hover:bg-white/5 transition-colors">
+            <Link 
+              href="/dashboard/ayuda" 
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                isAyuda
+                  ? "bg-[#E5A93C]/10 border-[#E5A93C]/20 text-[#E5A93C]"
+                  : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
               <HelpCircle className="h-5 w-5" />
               <span className="text-sm font-medium">Centro de ayuda</span>
             </Link>
@@ -272,6 +319,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="font-semibold text-[#283F50]">
               {pathname === "/dashboard/perfil"
                 ? "Mi perfil"
+                : isConfiguracion
+                ? "Configuración"
+                : isAyuda
+                ? "Centro de ayuda"
                 : isCampanas
                 ? "Campañas"
                 : isPortales
@@ -280,6 +331,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 ? "Plantillas"
                 : isUsuarios
                 ? "Usuarios"
+                : isReportes
+                ? "Reportes ejecutivos"
                 : "Vista general"}
             </span>
           </div>

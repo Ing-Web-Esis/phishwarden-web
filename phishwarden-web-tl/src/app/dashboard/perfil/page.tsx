@@ -156,8 +156,13 @@ export default function PerfilPage() {
       setOriginalData(updatedData);
       setIsEditing(false); // Salimos del modo edición tras guardar con éxito
       
-      // Recargar la página después de un momento para que el Layout actualice el nombre
-      setTimeout(() => window.location.reload(), 1500);
+      if (formData.nombre) {
+        localStorage.setItem("adminNombre", formData.nombre);
+      }
+      if (formData.nombreEmpresa) {
+        localStorage.setItem("nombreEmpresa", formData.nombreEmpresa);
+      }
+      window.dispatchEvent(new CustomEvent("phishwarden-session-updated"));
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         showToast("Error al actualizar", err.message || "Revisa los datos ingresados.", "error");

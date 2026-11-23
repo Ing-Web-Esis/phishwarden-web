@@ -41,6 +41,17 @@ export interface CompanyDetail {
   fechaCreacion?: string;
 }
 
+export interface UpdateCompanyInput {
+  nombre?: string;
+}
+
+export interface RegenerateAccessCodeResponse {
+  id: number;
+  nombre: string;
+  codigoAcceso: string;
+  mensaje: string;
+}
+
 export interface UpdateAdminProfileInput {
   nombre?: string;
   correo?: string;
@@ -335,3 +346,5 @@ export interface DispatchCampaignResponse {
   mode: 'sandbox' | 'live';
 }
 
+
+export * from '@/types/analytics';
