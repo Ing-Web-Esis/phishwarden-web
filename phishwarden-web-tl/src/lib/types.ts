@@ -34,11 +34,37 @@ export interface AdminProfile {
   codigoAcceso?: string;
 }
 
+export type CompanyPlan = 'essential' | 'professional' | 'enterprise';
+
 export interface CompanyDetail {
   id: number;
   nombre: string;
   codigoAcceso: string;
+  plan?: CompanyPlan;
   fechaCreacion?: string;
+}
+
+export interface RegisterCompanyInput {
+  companyName: string;
+  adminName: string;
+  adminEmail: string;
+  password: string;
+  plan?: CompanyPlan;
+}
+
+export interface RegisterCompanyResponse {
+  message: string;
+  empresa: {
+    id: number;
+    nombre: string;
+    codigoAcceso: string;
+    plan?: CompanyPlan;
+  };
+  administrador: {
+    id: number;
+    nombre: string;
+    correo: string;
+  };
 }
 
 export interface UpdateCompanyInput {

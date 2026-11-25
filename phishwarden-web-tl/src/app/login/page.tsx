@@ -47,6 +47,11 @@ export default function LoginPage() {
       <div className="flex w-full lg:w-1/2 flex-col items-center justify-center px-8">
         <div className="w-full max-w-[380px] space-y-8">
           
+          {/* Logo visible en pantallas móviles/tablets para regresar al landing */}
+          <div className="lg:hidden flex justify-start">
+            <Logo textColor="text-[#283F50]" />
+          </div>
+
           <div className="space-y-2">
             <p className="text-xs font-bold tracking-wider text-[#E5A93C] uppercase">
               Acceso Corporativo
@@ -62,8 +67,18 @@ export default function LoginPage() {
           {/* Aquí inyectamos toda la lógica y diseño interactivo */}
           <LoginForm />
 
-          <div className="space-y-6 pt-2">
-            <div className="flex justify-center items-center gap-1.5 text-sm text-slate-500">
+          <div className="space-y-4 pt-2">
+            <div className="text-center text-xs text-slate-500">
+              ¿Aún no tienes una cuenta?{" "}
+              <Link
+                href="/registro"
+                className="font-semibold text-[#E5A93C] hover:text-[#c79130] transition-colors"
+              >
+                Crea tu organización
+              </Link>
+            </div>
+
+            <div className="flex justify-center items-center gap-1.5 text-xs text-slate-500">
               <HelpCircle className="h-4 w-4" />
               <span>¿Necesitas ayuda?</span>
               <Link href="#" className="font-medium text-[#E5A93C] hover:text-[#c79130] transition-colors">
